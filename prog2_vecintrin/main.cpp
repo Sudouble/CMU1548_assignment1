@@ -238,9 +238,59 @@ void clampedExpSerial(float* values, int* exponents, float* output, int N) {
 
 void clampedExpVector(float* values, int* exponents, float* output, int N) {
   // TODO: Implement your vectorized version of clampedExpSerial here
+  __cmu418_vec_float x;
+  __cmu418_vec_int y, count_base, count;
+  __cmu418_vec_float result, result_max;
+  __cmu418_vec_int zero = _cmu418_vset_int(0);
+  __cmu418_mask maskAll, maskIsNegative, maskIsNotNegative, maskIsBigger;
 
   for (int i=0; i<N; i+=VECTOR_WIDTH) {
+    // All ones
+    maskAll = _cmu418_init_ones();
 
+    // All zeros
+    maskIsNegative = _cmu418_init_ones(0);
+
+    // Load vector of values from contiguous memory addresses
+    _cmu418_vload_float(x, values+i, maskAll);               // x = values[i];
+    _cmu418_vload_int(y, exponents+i, maskAll);              // y = exponents[i];
+
+    // Set mask according to predicate
+    _cmu418_veq_int(maskIsNegative, y, zero, maskAll);     // if (y == 0) {
+    _cmu418_vset_float(result, 1.f, maskIsNegative);   // output[i] = 1.f;
+    _cmu418_vstore_float(output+i, result, maskIsNegative);   // output[i] = 1.f;
+
+    maskIsNotNegative = _cmu418_mask_not(maskIsNegative); // } else {
+    _cmu418_vmove_float(result, x, maskIsNotNegative);  // result = x;
+
+    _cmu418_vload_int(count, exponents+i, maskIsNotNegative);
+    _cmu418_vset_int(count_base, 1, maskIsNotNegative);
+    _cmu418_vsub_int(count, count, count_base, maskIsNotNegative);  // count = y - 1;
+
+    __cmu418_vec_int count_0;
+    _cmu418_vset_int(count_0, 0, maskIsNotNegative);
+    __cmu418_mask maskWhile;
+    _cmu418_vgt_int(maskWhile, count, count_0, maskIsNotNegative);
+    while (_cmu418_cntbits(maskWhile) > 0)
+    {
+      _cmu418_vmult_float(result, result, x, maskWhile);  // result *= x;
+
+      _cmu418_vsub_int(count, count, count_base, maskIsNotNegative);  // count--;
+      _cmu418_vgt_int(maskWhile, count, count_0, maskIsNotNegative);
+
+      // CMU418Logger.addLog("====while", maskWhile, VECTOR_WIDTH);
+    }
+
+    // printf("result: %f\n", result.value[0]);
+
+    _cmu418_vset_float(result_max, 9.999999f, maskIsNotNegative);
+    _cmu418_vgt_float(maskIsBigger, result, result_max, maskIsNotNegative); // if (result > 9.999999f)
+    _cmu418_vset_float(result, 9.999999f, maskIsBigger);
+    _cmu418_vstore_float(output+i, result, maskIsNotNegative);
+
+    // printf("result--2: %f\n", result.value[0]);
+
+    // CMU418Logger.addLog("========", maskIsNotNegative, VECTOR_WIDTH);
   }
 
 }
